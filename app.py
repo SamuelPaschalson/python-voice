@@ -94,6 +94,10 @@ def handle_create_embedding():
 @app.route('/create-text-dependent-embedding', methods=['POST'])
 def handle_create_text_dependent_embedding():
     try:
+        print("Request content type:", request.content_type)
+        print("Request files:", list(request.files.keys()))
+        print("Request form:", dict(request.form))
+        
         # Handle file upload
         if 'audio' not in request.files:
             return jsonify({"error": "No audio file provided"}), 400
@@ -102,8 +106,11 @@ def handle_create_text_dependent_embedding():
         if audio_file.filename == '':
             return jsonify({"error": "No audio file selected"}), 400
         
-        # Get prompt text from form data or JSON
-        prompt_text = request.form.get('prompt_text') or request.json.get('prompt_text') if request.json else None
+        # Get prompt text from form data only (not JSON for multipart requests)
+        prompt_text = request.form.get('prompt_text')
+        
+        print(f"Audio file: {audio_file.filename}")
+        print(f"Prompt text: {prompt_text}")
         
         # Save temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
@@ -119,6 +126,7 @@ def handle_create_text_dependent_embedding():
         return jsonify(result)
         
     except Exception as e:
+        print(f"Error in create_text_dependent_embedding: {str(e)}")
         return jsonify({"error": f"Internal server error: {str(e)}"}), 500
 
 # Base64 endpoint for serverless compatibility
