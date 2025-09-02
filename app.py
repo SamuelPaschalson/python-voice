@@ -6,10 +6,8 @@ import warnings
 warnings.filterwarnings("ignore")
 
 app = Flask(__name__)
-CORS(app, origins=["http://localhost:3000", "http://localhost:3001", "http://your-frontend-domain.com"])
+CORS(app)
 
-# Increase payload size limit
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 # Enhanced create_embedding function
 def create_embedding(audio_data, prompt_text=None):
