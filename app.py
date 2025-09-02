@@ -6,7 +6,10 @@ import warnings
 warnings.filterwarnings("ignore")
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=["http://localhost:3000", "http://localhost:3001", "http://your-frontend-domain.com"])
+
+# Increase payload size limit
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 # Enhanced create_embedding function
 def create_embedding(audio_data, prompt_text=None):
@@ -107,12 +110,22 @@ def handle_create_embedding():
 @app.route('/create-text-dependent-embedding', methods=['POST'])
 def handle_create_text_dependent_embedding():
     try:
+        # Check if audio file is present
         if 'audio' not in request.files:
             return jsonify({"error": "No audio file provided"}), 400
 
-        prompt_text = request.form.get('prompt_text', 'default')
         audio_file = request.files['audio']
+        
+        # Check file size
+        audio_file.seek(0, 2)  # Seek to end
+        file_size = audio_file.tell()
+        audio_file.seek(0)  # Reset to beginning
+        
+        if file_size > 10 * 1024 * 1024:  # 10MB limit
+            return jsonify({"error": "File too large. Maximum size is 10MB"}), 400
+        
         audio_data = audio_file.read()
+        prompt_text = request.form.get('prompt_text', 'default')
 
         embedding = create_embedding(audio_data, prompt_text)
 
@@ -125,7 +138,8 @@ def handle_create_text_dependent_embedding():
         })
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print(f"Error in create-text-dependent-embedding: {str(e)}")
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
 
 @app.route('/compare-embeddings', methods=['POST'])
 def handle_compare_embeddings():
