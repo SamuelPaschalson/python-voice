@@ -6,37 +6,39 @@ import warnings
 import tempfile
 import os
 import base64
+import soundfile as sf
 
 warnings.filterwarnings("ignore")
 
 app = Flask(__name__)
 CORS(app)
 
-# Enhanced create_embedding function
+# Fixed create_embedding function
 def create_embedding(audio_data, prompt_text=None):
     try:
-        # Load audio data using librosa
-        if isinstance(audio_data, str):
-            # If audio_data is a file path
-            y, sr = librosa.load(audio_data, sr=16000)
-        else:
-            # If audio_data is already numpy array
-            y = audio_data
-            sr = 16000
+        # Create a temporary file to save the audio
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_file:
+            tmp_file.write(audio_data)
+            tmp_filename = tmp_file.name
         
-        # Extract features (MFCC as a simple embedding)
+        # Load audio file using librosa
+        y, sr = librosa.load(tmp_filename, sr=16000)  # Resample to 16kHz
+        
+        # Clean up temporary file
+        os.unlink(tmp_filename)
+        
+        # Extract audio features (MFCCs as a simple example)
+        # In a real implementation, you'd use a proper voice embedding model
         mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
-        # Take mean across time axis to get fixed-size embedding
+        
+        # Average across time to get a fixed-length vector
         embedding = np.mean(mfccs, axis=1)
         
-        # If prompt_text is provided, you could incorporate it here
-        # For now, we'll just use audio features
+        # Normalize the embedding
+        embedding = embedding / np.linalg.norm(embedding)
         
-        return {
-            "embedding": embedding.tolist(),
-            "shape": embedding.shape,
-            "prompt_text": prompt_text
-        }
+        return {"embedding": embedding.tolist(), "status": "success"}
+    
     except Exception as e:
         return {"error": f"Embedding creation failed: {str(e)}"}
 
@@ -44,19 +46,11 @@ def cosine_similarity(vec1, vec2):
     try:
         vec1 = np.array(vec1)
         vec2 = np.array(vec2)
-        
-        # Calculate cosine similarity
         dot_product = np.dot(vec1, vec2)
-        norm1 = np.linalg.norm(vec1)
-        norm2 = np.linalg.norm(vec2)
-        
-        if norm1 == 0 or norm2 == 0:
-            return 0.0
-        
-        similarity = dot_product / (norm1 * norm2)
-        return float(similarity)
+        norm_vec1 = np.linalg.norm(vec1)
+        norm_vec2 = np.linalg.norm(vec2)
+        return dot_product / (norm_vec1 * norm_vec2)
     except Exception as e:
-        print(f"Cosine similarity error: {e}")
         return 0.0
 
 @app.route('/health', methods=['GET'])
@@ -66,100 +60,81 @@ def health_check():
 @app.route('/create-embedding', methods=['POST'])
 def handle_create_embedding():
     try:
-        # Handle file upload
         if 'audio' not in request.files:
             return jsonify({"error": "No audio file provided"}), 400
         
         audio_file = request.files['audio']
-        if audio_file.filename == '':
-            return jsonify({"error": "No audio file selected"}), 400
+        audio_data = audio_file.read()
         
-        # Save temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
-            audio_file.save(temp_file.name)
-            result = create_embedding(temp_file.name)
-        
-        # Clean up
-        os.unlink(temp_file.name)
+        result = create_embedding(audio_data)
         
         if "error" in result:
-            return jsonify(result), 500
+            return jsonify(result), 400
         
         return jsonify(result)
-        
+    
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# New endpoint for text-dependent verification
+# Fixed text-dependent verification endpoint
 @app.route('/create-text-dependent-embedding', methods=['POST'])
 def handle_create_text_dependent_embedding():
     try:
-        print("Request content type:", request.content_type)
-        print("Request files:", list(request.files.keys()))
-        print("Request form:", dict(request.form))
-        
-        # Handle file upload
         if 'audio' not in request.files:
             return jsonify({"error": "No audio file provided"}), 400
         
+        if 'prompt_text' not in request.form:
+            return jsonify({"error": "No prompt text provided"}), 400
+        
         audio_file = request.files['audio']
-        if audio_file.filename == '':
-            return jsonify({"error": "No audio file selected"}), 400
+        prompt_text = request.form['prompt_text']
+        audio_data = audio_file.read()
         
-        # Get prompt text from form data only (not JSON for multipart requests)
-        prompt_text = request.form.get('prompt_text')
-        
-        print(f"Audio file: {audio_file.filename}")
-        print(f"Prompt text: {prompt_text}")
-        
-        # Save temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
-            audio_file.save(temp_file.name)
-            result = create_embedding(temp_file.name, prompt_text)
-        
-        # Clean up
-        os.unlink(temp_file.name)
+        # Call the actual embedding function
+        result = create_embedding(audio_data, prompt_text)
         
         if "error" in result:
-            return jsonify(result), 500
+            return jsonify(result), 400
         
-        return jsonify(result)
-        
+        return jsonify({
+            "embedding": result["embedding"],
+            "prompt_text": prompt_text,
+            "status": "success"
+        })
+    
     except Exception as e:
-        print(f"Error in create_text_dependent_embedding: {str(e)}")
         return jsonify({"error": f"Internal server error: {str(e)}"}), 500
 
-# Base64 endpoint for serverless compatibility
+# Fixed Base64 endpoint for serverless compatibility
 @app.route('/create-text-dependent-embedding-base64', methods=['POST'])
 def handle_create_text_dependent_embedding_base64():
     try:
         data = request.get_json()
         
         if not data or 'audio_base64' not in data:
-            return jsonify({"error": "No audio_base64 data provided"}), 400
+            return jsonify({"error": "No base64 audio data provided"}), 400
+        
+        if 'prompt_text' not in data:
+            return jsonify({"error": "No prompt text provided"}), 400
+        
+        audio_base64 = data['audio_base64']
+        prompt_text = data['prompt_text']
         
         # Decode base64 audio
-        try:
-            audio_bytes = base64.b64decode(data['audio_base64'])
-        except Exception as e:
-            return jsonify({"error": f"Invalid base64 audio data: {str(e)}"}), 400
+        audio_data = base64.b64decode(audio_base64)
         
-        prompt_text = data.get('prompt_text')
-        
-        # Save to temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
-            temp_file.write(audio_bytes)
-            temp_file.flush()
-            result = create_embedding(temp_file.name, prompt_text)
-        
-        # Clean up
-        os.unlink(temp_file.name)
+        # Call the actual embedding function
+        result = create_embedding(audio_data, prompt_text)
         
         if "error" in result:
-            return jsonify(result), 500
+            return jsonify(result), 400
         
-        return jsonify(result)
-        
+        return jsonify({
+            "embedding": result["embedding"],
+            "prompt_text": prompt_text,
+            "status": "success"
+        })
+    
     except Exception as e:
         return jsonify({"error": f"Internal server error: {str(e)}"}), 500
 
@@ -169,19 +144,18 @@ def handle_compare_embeddings():
         data = request.get_json()
         
         if not data or 'embedding1' not in data or 'embedding2' not in data:
-            return jsonify({"error": "Two embeddings required"}), 400
+            return jsonify({"error": "Both embeddings are required"}), 400
         
         embedding1 = data['embedding1']
         embedding2 = data['embedding2']
         
-        # Calculate similarity
         similarity = cosine_similarity(embedding1, embedding2)
         
         return jsonify({
-            "similarity": similarity,
-            "match": similarity > 0.8  # Threshold for match
+            "similarity": float(similarity),
+            "status": "success"
         })
-        
+    
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
