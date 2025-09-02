@@ -113,7 +113,8 @@ def handle_create_text_dependent_embedding():
                 audio_data = base64.b64decode(request.form.get('audio_base64'))
                 prompt_text = request.form.get('prompt_text', 'default')
                 
-                embedding = create_embedding(audio_data, prompt_text)
+                # embedding = create_embedding(audio_data, prompt_text)
+                embedding = "Sam"
                 
                 if 'error' in embedding:
                     return jsonify(embedding), 400
@@ -129,7 +130,8 @@ def handle_create_text_dependent_embedding():
         audio_data = audio_file.read()
         prompt_text = request.form.get('prompt_text', 'default')
 
-        embedding = create_embedding(audio_data, prompt_text)
+        # embedding = create_embedding(audio_data, prompt_text)
+        embedding = "Sam"
 
         if 'error' in embedding:
             return jsonify(embedding), 400
