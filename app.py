@@ -14,70 +14,49 @@ CORS(app)
 
 # Enhanced create_embedding function
 def create_embedding(audio_data, prompt_text=None):
-    """Create voice embedding from audio data with text dependency"""
     try:
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
-            tmp_file.write(audio_data)
-            tmp_path = tmp_file.name
-
-        try:
-            # Load audio file
-            y, sr = librosa.load(tmp_path, sr=16000, duration=3.0)
-
-            # Check if audio is long enough
-            if len(y) < sr * 0.5:
-                return {"error": "Audio too short"}
-
-            # Pre-emphasis to amplify high frequencies
-            y = librosa.effects.preemphasis(y)
-
-            # Extract MFCC features with more parameters
-            mfccs = librosa.feature.mfcc(
-                y=y,
-                sr=sr,
-                n_mfcc=20,
-                n_fft=2048,
-                hop_length=512,
-                n_mels=128
-            )
-
-            # Calculate delta and delta-delta features
-            mfcc_delta = librosa.feature.delta(mfccs)
-            mfcc_delta2 = librosa.feature.delta(mfccs, order=2)
-
-            # Combine all features
-            features = np.vstack([mfccs, mfcc_delta, mfcc_delta2])
-
-            # Calculate statistics
-            feature_mean = np.mean(features, axis=1)
-            feature_std = np.std(features, axis=1)
-            feature_max = np.max(features, axis=1)
-            feature_min = np.min(features, axis=1)
-
-            # Combine to create embedding
-            embedding = np.concatenate([feature_mean, feature_std, feature_max, feature_min])
-
-            return embedding.tolist()
-        finally:
-            # Clean up temporary file
-            os.unlink(tmp_path)
-
+        # Load audio data using librosa
+        if isinstance(audio_data, str):
+            # If audio_data is a file path
+            y, sr = librosa.load(audio_data, sr=16000)
+        else:
+            # If audio_data is already numpy array
+            y = audio_data
+            sr = 16000
+        
+        # Extract features (MFCC as a simple embedding)
+        mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+        # Take mean across time axis to get fixed-size embedding
+        embedding = np.mean(mfccs, axis=1)
+        
+        # If prompt_text is provided, you could incorporate it here
+        # For now, we'll just use audio features
+        
+        return {
+            "embedding": embedding.tolist(),
+            "shape": embedding.shape,
+            "prompt_text": prompt_text
+        }
     except Exception as e:
         return {"error": f"Embedding creation failed: {str(e)}"}
 
 def cosine_similarity(vec1, vec2):
-    """Calculate cosine similarity between two vectors"""
     try:
+        vec1 = np.array(vec1)
+        vec2 = np.array(vec2)
+        
+        # Calculate cosine similarity
         dot_product = np.dot(vec1, vec2)
         norm1 = np.linalg.norm(vec1)
         norm2 = np.linalg.norm(vec2)
-
+        
         if norm1 == 0 or norm2 == 0:
             return 0.0
-
+        
         similarity = dot_product / (norm1 * norm2)
-        return (similarity + 1) / 2
-    except:
+        return float(similarity)
+    except Exception as e:
+        print(f"Cosine similarity error: {e}")
         return 0.0
 
 @app.route('/health', methods=['GET'])
@@ -87,19 +66,27 @@ def health_check():
 @app.route('/create-embedding', methods=['POST'])
 def handle_create_embedding():
     try:
+        # Handle file upload
         if 'audio' not in request.files:
             return jsonify({"error": "No audio file provided"}), 400
-
+        
         audio_file = request.files['audio']
-        audio_data = audio_file.read()
-
-        embedding = create_embedding(audio_data)
-
-        if 'error' in embedding:
-            return jsonify(embedding), 400
-
-        return jsonify({"embedding": embedding})
-
+        if audio_file.filename == '':
+            return jsonify({"error": "No audio file selected"}), 400
+        
+        # Save temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
+            audio_file.save(temp_file.name)
+            result = create_embedding(temp_file.name)
+        
+        # Clean up
+        os.unlink(temp_file.name)
+        
+        if "error" in result:
+            return jsonify(result), 500
+        
+        return jsonify(result)
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -107,40 +94,30 @@ def handle_create_embedding():
 @app.route('/create-text-dependent-embedding', methods=['POST'])
 def handle_create_text_dependent_embedding():
     try:
+        # Handle file upload
         if 'audio' not in request.files:
-            # Check if audio is sent as base64
-            if request.form.get('audio_base64'):
-                audio_data = base64.b64decode(request.form.get('audio_base64'))
-                prompt_text = request.form.get('prompt_text', 'default')
-                
-                # embedding = create_embedding(audio_data, prompt_text)
-                embedding = "Sam"
-                
-                if 'error' in embedding:
-                    return jsonify(embedding), 400
-                
-                return jsonify({
-                    "embedding": embedding,
-                    "prompt_text": prompt_text
-                })
-            
             return jsonify({"error": "No audio file provided"}), 400
-
+        
         audio_file = request.files['audio']
-        audio_data = audio_file.read()
-        prompt_text = request.form.get('prompt_text', 'default')
-
-        embedding = create_embedding(audio_data, prompt_text)
-        # embedding = "Sam"
-
-        if 'error' in embedding:
-            return jsonify(embedding), 400
-
-        return jsonify({
-            "embedding": embedding,
-            "prompt_text": prompt_text
-        })
-
+        if audio_file.filename == '':
+            return jsonify({"error": "No audio file selected"}), 400
+        
+        # Get prompt text from form data or JSON
+        prompt_text = request.form.get('prompt_text') or request.json.get('prompt_text') if request.json else None
+        
+        # Save temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
+            audio_file.save(temp_file.name)
+            result = create_embedding(temp_file.name, prompt_text)
+        
+        # Clean up
+        os.unlink(temp_file.name)
+        
+        if "error" in result:
+            return jsonify(result), 500
+        
+        return jsonify(result)
+        
     except Exception as e:
         return jsonify({"error": f"Internal server error: {str(e)}"}), 500
 
@@ -148,24 +125,32 @@ def handle_create_text_dependent_embedding():
 @app.route('/create-text-dependent-embedding-base64', methods=['POST'])
 def handle_create_text_dependent_embedding_base64():
     try:
-        data = request.json
+        data = request.get_json()
         
-        if not data or 'audio' not in data:
-            return jsonify({"error": "No audio data provided"}), 400
+        if not data or 'audio_base64' not in data:
+            return jsonify({"error": "No audio_base64 data provided"}), 400
         
         # Decode base64 audio
-        audio_data = base64.b64decode(data['audio'])
-        prompt_text = data.get('prompt_text', 'default')
+        try:
+            audio_bytes = base64.b64decode(data['audio_base64'])
+        except Exception as e:
+            return jsonify({"error": f"Invalid base64 audio data: {str(e)}"}), 400
         
-        embedding = create_embedding(audio_data, prompt_text)
+        prompt_text = data.get('prompt_text')
         
-        if 'error' in embedding:
-            return jsonify(embedding), 400
+        # Save to temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
+            temp_file.write(audio_bytes)
+            temp_file.flush()
+            result = create_embedding(temp_file.name, prompt_text)
         
-        return jsonify({
-            "embedding": embedding,
-            "prompt_text": prompt_text
-        })
+        # Clean up
+        os.unlink(temp_file.name)
+        
+        if "error" in result:
+            return jsonify(result), 500
+        
+        return jsonify(result)
         
     except Exception as e:
         return jsonify({"error": f"Internal server error: {str(e)}"}), 500
@@ -173,25 +158,22 @@ def handle_create_text_dependent_embedding_base64():
 @app.route('/compare-embeddings', methods=['POST'])
 def handle_compare_embeddings():
     try:
-        data = request.json
-        embedding1 = data.get('embedding1')
-        embedding2 = data.get('embedding2')
-        threshold = data.get('threshold', 0.7)
-
-        if not embedding1 or not embedding2:
-            return jsonify({"error": "Both embeddings are required"}), 400
-
-        emb1 = np.array(embedding1)
-        emb2 = np.array(embedding2)
-
-        similarity = cosine_similarity(emb1, emb2)
-
+        data = request.get_json()
+        
+        if not data or 'embedding1' not in data or 'embedding2' not in data:
+            return jsonify({"error": "Two embeddings required"}), 400
+        
+        embedding1 = data['embedding1']
+        embedding2 = data['embedding2']
+        
+        # Calculate similarity
+        similarity = cosine_similarity(embedding1, embedding2)
+        
         return jsonify({
-            "similarity": float(similarity),
-            "match": similarity >= threshold,
-            "threshold": threshold
+            "similarity": similarity,
+            "match": similarity > 0.8  # Threshold for match
         })
-
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
