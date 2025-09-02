@@ -3,20 +3,19 @@ from flask_cors import CORS
 import numpy as np
 import librosa
 import warnings
+import tempfile
+import os
+import base64
+
 warnings.filterwarnings("ignore")
 
 app = Flask(__name__)
 CORS(app)
 
-
 # Enhanced create_embedding function
 def create_embedding(audio_data, prompt_text=None):
     """Create voice embedding from audio data with text dependency"""
     try:
-        # Save audio to temporary file
-        import tempfile
-        import os
-
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
             tmp_file.write(audio_data)
             tmp_path = tmp_file.name
@@ -108,20 +107,25 @@ def handle_create_embedding():
 @app.route('/create-text-dependent-embedding', methods=['POST'])
 def handle_create_text_dependent_embedding():
     try:
-        # Check if audio file is present
         if 'audio' not in request.files:
+            # Check if audio is sent as base64
+            if request.form.get('audio_base64'):
+                audio_data = base64.b64decode(request.form.get('audio_base64'))
+                prompt_text = request.form.get('prompt_text', 'default')
+                
+                embedding = create_embedding(audio_data, prompt_text)
+                
+                if 'error' in embedding:
+                    return jsonify(embedding), 400
+                
+                return jsonify({
+                    "embedding": embedding,
+                    "prompt_text": prompt_text
+                })
+            
             return jsonify({"error": "No audio file provided"}), 400
 
         audio_file = request.files['audio']
-        
-        # Check file size
-        audio_file.seek(0, 2)  # Seek to end
-        file_size = audio_file.tell()
-        audio_file.seek(0)  # Reset to beginning
-        
-        if file_size > 10 * 1024 * 1024:  # 10MB limit
-            return jsonify({"error": "File too large. Maximum size is 10MB"}), 400
-        
         audio_data = audio_file.read()
         prompt_text = request.form.get('prompt_text', 'default')
 
@@ -136,7 +140,32 @@ def handle_create_text_dependent_embedding():
         })
 
     except Exception as e:
-        print(f"Error in create-text-dependent-embedding: {str(e)}")
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
+# Base64 endpoint for serverless compatibility
+@app.route('/create-text-dependent-embedding-base64', methods=['POST'])
+def handle_create_text_dependent_embedding_base64():
+    try:
+        data = request.json
+        
+        if not data or 'audio' not in data:
+            return jsonify({"error": "No audio data provided"}), 400
+        
+        # Decode base64 audio
+        audio_data = base64.b64decode(data['audio'])
+        prompt_text = data.get('prompt_text', 'default')
+        
+        embedding = create_embedding(audio_data, prompt_text)
+        
+        if 'error' in embedding:
+            return jsonify(embedding), 400
+        
+        return jsonify({
+            "embedding": embedding,
+            "prompt_text": prompt_text
+        })
+        
+    except Exception as e:
         return jsonify({"error": f"Internal server error: {str(e)}"}), 500
 
 @app.route('/compare-embeddings', methods=['POST'])
@@ -165,4 +194,4 @@ def handle_compare_embeddings():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0', port=5000)
