@@ -14,12 +14,15 @@ import time
 from functools import wraps
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024  # Reduced to 8MB
+app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024  # 8MB
 
-# Configure logging
+# Configure logging for Railway
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()  # Railway captures stdout
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -42,8 +45,11 @@ def memory_monitor(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         # Get initial memory
-        process = psutil.Process(os.getpid())
-        initial_memory = process.memory_info().rss / 1024 / 1024  # MB
+        try:
+            process = psutil.Process(os.getpid())
+            initial_memory = process.memory_info().rss / 1024 / 1024  # MB
+        except:
+            initial_memory = 0
         
         try:
             result = func(*args, **kwargs)
@@ -56,12 +62,15 @@ def memory_monitor(func):
             gc.collect()
             
             # Log memory usage
-            final_memory = process.memory_info().rss / 1024 / 1024  # MB
-            logger.info(f"{func.__name__} - Memory: {initial_memory:.1f}MB -> {final_memory:.1f}MB")
-            
-            # Warning if memory usage is high
-            if final_memory > 1000:  # 1GB
-                logger.warning(f"High memory usage: {final_memory:.1f}MB")
+            try:
+                final_memory = process.memory_info().rss / 1024 / 1024  # MB
+                logger.info(f"{func.__name__} - Memory: {initial_memory:.1f}MB -> {final_memory:.1f}MB")
+                
+                # Warning if memory usage is high
+                if final_memory > 1000:  # 1GB
+                    logger.warning(f"High memory usage: {final_memory:.1f}MB")
+            except:
+                pass
     
     return wrapper
 
@@ -210,6 +219,15 @@ class OptimizedVoiceProcessor:
 # Initialize processor
 voice_processor = OptimizedVoiceProcessor()
 
+@app.route('/', methods=['GET'])
+def home():
+    """Root endpoint for Railway health check"""
+    return jsonify({
+        'service': 'Voice Biometrics Processor',
+        'status': 'online',
+        'version': '1.0.0'
+    })
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Enhanced health check with memory info"""
@@ -219,10 +237,11 @@ def health_check():
         
         return jsonify({
             'status': 'healthy',
-            'service': 'voice_processor_optimized',
+            'service': 'voice_processor_railway',
             'memory_mb': round(memory_info.rss / 1024 / 1024, 1),
             'cpu_percent': process.cpu_percent(),
-            'encoder_loaded': encoder_instance is not None
+            'encoder_loaded': encoder_instance is not None,
+            'platform': 'railway'
         })
     except Exception as e:
         return jsonify({
@@ -355,7 +374,8 @@ def memory_status():
             'vms_mb': round(memory_info.vms / 1024 / 1024, 1),
             'cpu_percent': process.cpu_percent(),
             'num_threads': process.num_threads(),
-            'encoder_loaded': encoder_instance is not None
+            'encoder_loaded': encoder_instance is not None,
+            'platform': 'railway'
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -391,23 +411,39 @@ def after_request(response):
 def too_large(e):
     return jsonify({'error': 'File too large. Maximum size is 8MB.'}), 413
 
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({'error': 'Endpoint not found'}), 404
+
+@app.errorhandler(500)
+def internal_error(e):
+    return jsonify({'error': 'Internal server error'}), 500
+
 if __name__ == '__main__':
     # Set memory-friendly configuration
-    os.environ['OMP_NUM_THREADS'] = '2'  # Limit OpenMP threads
-    os.environ['MKL_NUM_THREADS'] = '2'  # Limit MKL threads
+    os.environ['OMP_NUM_THREADS'] = '2'
+    os.environ['MKL_NUM_THREADS'] = '2'
+    os.environ['OPENBLAS_NUM_THREADS'] = '2'
+    os.environ['NUMBA_NUM_THREADS'] = '2'
     
-    port = int(os.environ.get('VOICE_PROCESSOR_PORT', 5001))
+    # Railway provides PORT environment variable
+    port = int(os.environ.get('PORT', 8000))
     
-    # Log initial memory usage
-    process = psutil.Process(os.getpid())
-    initial_memory = process.memory_info().rss / 1024 / 1024
-    logger.info(f"Starting voice processor with {initial_memory:.1f}MB memory")
+    # Log startup information
+    logger.info("Starting Voice Biometrics Processor for Railway")
+    logger.info(f"Port: {port}")
     
-    # Use single process with limited workers for memory efficiency
+    try:
+        process = psutil.Process(os.getpid())
+        initial_memory = process.memory_info().rss / 1024 / 1024
+        logger.info(f"Initial memory usage: {initial_memory:.1f}MB")
+    except:
+        logger.info("Could not get initial memory info")
+    
+    # Railway expects the app to bind to 0.0.0.0 and the PORT env var
     app.run(
-        host='0.0.0.0', 
-        port=port, 
+        host='0.0.0.0',
+        port=port,
         debug=False,
-        threaded=True,
-        processes=1
+        threaded=True
     )
