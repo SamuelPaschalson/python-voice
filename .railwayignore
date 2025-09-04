@@ -1,0 +1,16 @@
+node_modules/
+.git/
+.env
+_.log
+.DS_Store
+coverage/
+.nyc_output/
+temp/
+tmp/
+test/
+tests/
+_.test.js
+\*.spec.js
+.gitignore
+README.md
+Dockerfile

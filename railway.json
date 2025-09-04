@@ -8,21 +8,5 @@
     "startCommand": "npm start",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
-  },
-  "environments": {
-    "production": {
-      "variables": {
-        "NODE_ENV": "production",
-        "USE_LOCAL_PYTHON": "true",
-        "PYTHON_SERVICE_URL": "http://localhost:5000"
-      }
-    },
-    "staging": {
-      "variables": {
-        "NODE_ENV": "staging",
-        "USE_LOCAL_PYTHON": "false",
-        "PYTHON_SERVICE_URL": "${PYTHON_SERVICE_URL}"
-      }
-    }
   }
 }
