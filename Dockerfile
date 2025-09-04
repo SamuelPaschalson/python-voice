@@ -1,48 +1,53 @@
-# Build stage
-FROM python:3.10-slim as builder
+# Use Node.js LTS with Alpine for smaller image size
+FROM node:18-alpine
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    libsndfile1 \
+# Install system dependencies for audio processing
+RUN apk add --no-cache \
     ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+    python3 \
+    py3-pip \
+    build-base \
+    python3-dev \
+    linux-headers \
+    && ln -sf python3 /usr/bin/python
 
-# Create virtual environment
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+# Install Python dependencies for local model inference (optional)
+RUN pip3 install --no-cache-dir \
+    numpy==1.24.3 \
+    scipy==1.10.1 \
+    scikit-learn==1.3.0 \
+    librosa==0.10.1 \
+    resemblyzer==0.1.2 \
+    soundfile==0.12.1
 
-# Install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir torch==2.0.1 --index-url https://download.pytorch.org/whl/cpu
+# Create app directory
+WORKDIR /usr/src/app
 
-# Add these lines after installing packages in the builder stage
-RUN find /opt/venv -type f -name '*.pyc' -delete
-RUN find /opt/venv -type d -name '__pycache__' -exec rm -rf {} +
-RUN apt-get purge -y build-essential && apt-get autoremove -y
+# Copy package files
+COPY package*.json ./
 
-# Final stage
-FROM python:3.10-slim
-
-# Install runtime dependencies only
-RUN apt-get update && apt-get install -y \
-    libsndfile1 \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy virtual environment from builder
-COPY --from=builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Set working directory
-WORKDIR /app
+# Install Node.js dependencies
+RUN npm ci --only=production && npm cache clean --force
 
 # Copy application code
-COPY . .
+COPY app.js ./
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nodejs -u 1001
+
+# Change ownership of the working directory
+RUN chown -R nodejs:nodejs /usr/src/app
+USER nodejs
 
 # Expose port
-EXPOSE $PORT
+EXPOSE 8000
 
-# Run the application
-CMD gunicorn --bind 0.0.0.0:$PORT --workers 1 --timeout 120 --max-requests 100 --max-requests-jitter 20 --preload --log-level info app:app
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:8000/health', (res) => { \
+    process.exit(res.statusCode === 200 ? 0 : 1) \
+  }).on('error', () => process.exit(1))"
+
+# Start the application
+CMD ["node", "app.js"]

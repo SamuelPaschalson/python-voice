@@ -1,0 +1,52 @@
+{
+  "name": "python-voice",
+  "version": "1.0.0",
+  "description": "Node.js voice biometrics processor with embedding extraction and verification",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "test": "jest",
+    "lint": "eslint app.js",
+    "build": "echo 'No build step required'",
+    "cleanup": "rm -rf node_modules package-lock.json"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "multer": "^1.4.5-lts.1",
+    "axios": "^1.6.0",
+    "form-data": "^4.0.0",
+    "fluent-ffmpeg": "^2.1.2",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1",
+    "jest": "^29.7.0",
+    "eslint": "^8.52.0",
+    "supertest": "^6.3.3"
+  },
+  "keywords": [
+    "voice",
+    "biometrics",
+    "speaker",
+    "verification",
+    "embedding",
+    "audio",
+    "nodejs",
+    "express"
+  ],
+  "author": "Voice Biometrics Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SamuelPaschalson/python-voice"
+  },
+  "bugs": {
+    "url": "https://github.com/SamuelPaschalson/python-voice/issues"
+  },
+  "homepage": "https://github.com/SamuelPaschalson/python-voice#readme"
+}

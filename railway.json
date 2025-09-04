@@ -1,23 +1,27 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "builder": "DOCKERFILE"
+    "builder": "NIXPACKS",
+    "buildCommand": "npm install"
   },
   "deploy": {
-    "startCommand": "gunicorn --bind 0.0.0.0:$PORT --workers 1 --timeout 120 --max-requests 100 --max-requests-jitter 20 --preload --log-level info app:app",
-    "healthcheckPath": "/health",
-    "healthcheckTimeout": 30,
-    "restartPolicyType": "always"
+    "startCommand": "npm start",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 3
   },
   "environments": {
     "production": {
       "variables": {
-        "PYTHONUNBUFFERED": "1",
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "OMP_NUM_THREADS": "2",
-        "MKL_NUM_THREADS": "2",
-        "OPENBLAS_NUM_THREADS": "2",
-        "NUMBA_NUM_THREADS": "2"
+        "NODE_ENV": "production",
+        "USE_LOCAL_PYTHON": "true",
+        "PYTHON_SERVICE_URL": "http://localhost:5000"
+      }
+    },
+    "staging": {
+      "variables": {
+        "NODE_ENV": "staging",
+        "USE_LOCAL_PYTHON": "false",
+        "PYTHON_SERVICE_URL": "${PYTHON_SERVICE_URL}"
       }
     }
   }
