@@ -29,7 +29,7 @@ RUN python -c "from resemblyzer import VoiceEncoder; VoiceEncoder()" && \
     rm -rf /tmp/*
 
 # Copy application code
-COPY optimized_voice_processor.py .
+COPY app.py .
 COPY gunicorn.conf.py .
 COPY start_voice_processor.sh .
 
@@ -47,6 +47,6 @@ EXPOSE 5001
 
 # Health check
 HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
-    CMD curl -f http://localhost:5001/health || exit 1
+    CMD curl -f https://python-voice.pxxl.xyz/health || exit 1
 
 CMD ["./start_voice_processor.sh"]
