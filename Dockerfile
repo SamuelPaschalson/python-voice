@@ -17,6 +17,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir torch==2.0.1 --index-url https://download.pytorch.org/whl/cpu
 
+# Add these lines after installing packages in the builder stage
+RUN find /opt/venv -type f -name '*.pyc' -delete
+RUN find /opt/venv -type d -name '__pycache__' -exec rm -rf {} +
+RUN apt-get purge -y build-essential && apt-get autoremove -y
+
 # Final stage
 FROM python:3.10-slim
 
