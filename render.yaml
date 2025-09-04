@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: voice-processing-api
+    env: python
+    buildCommand: 'pip install -r requirements.txt'
+    startCommand: 'gunicorn --bind 0.0.0.0:$PORT --workers 1 --timeout 120 --max-requests 100 --max-requests-jitter 20 --preload app:app'
+    plan: starter # Can upgrade to standard/pro for better performance
+
+    # Environment variables
+    envVars:
+      - key: PYTHON_VERSION
+        value: '3.9.18'
+      - key: DEFAULT_VERIFICATION_THRESHOLD
+        value: '0.75'
+      - key: OMP_NUM_THREADS
+        value: '2'
+      - key: MKL_NUM_THREADS
+        value: '2'
+      - key: OPENBLAS_NUM_THREADS
+        value: '2'
+      - key: NUMBA_NUM_THREADS
+        value: '2'
+      - key: PYTHONUNBUFFERED
+        value: '1'
+      - key: PYTHONDONTWRITEBYTECODE
+        value: '1'
+
+    # Health check configuration
+    healthCheckPath: '/health'
+
+    # Auto-deploy settings
+    autoDeploy: false # Set to true for automatic deployments
+
+    # Resource limits (adjust based on your plan)
+    # For starter plan: 0.5 CPU, 512MB RAM
+    # For standard plan: 1 CPU, 2GB RAM
+    # For pro plan: 2 CPU, 4GB RAM
+
+    # Build settings
+    rootDir: .
+
+    # Runtime settings
+    runtime: python3

@@ -1,3 +1,4 @@
+# render_app.py - Optimized for Render deployment
 import os
 import gc
 import numpy as np
@@ -12,14 +13,16 @@ import psutil
 from threading import Lock
 import time
 from functools import wraps
+import sys
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024  # Reduced to 8MB
+app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024  # 8MB
 
-# Configure logging
+# Configure logging for Render
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger(__name__)
 
@@ -33,17 +36,23 @@ def get_encoder():
     with encoder_lock:
         if encoder_instance is None:
             logger.info("Initializing voice encoder...")
-            encoder_instance = VoiceEncoder()
-            logger.info("Voice encoder initialized successfully")
+            try:
+                encoder_instance = VoiceEncoder()
+                logger.info("Voice encoder initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize encoder: {e}")
+                raise
         return encoder_instance
 
 def memory_monitor(func):
     """Decorator to monitor memory usage"""
     @wraps(func)
     def wrapper(*args, **kwargs):
-        # Get initial memory
-        process = psutil.Process(os.getpid())
-        initial_memory = process.memory_info().rss / 1024 / 1024  # MB
+        try:
+            process = psutil.Process(os.getpid())
+            initial_memory = process.memory_info().rss / 1024 / 1024  # MB
+        except:
+            initial_memory = 0
         
         try:
             result = func(*args, **kwargs)
@@ -56,32 +65,33 @@ def memory_monitor(func):
             gc.collect()
             
             # Log memory usage
-            final_memory = process.memory_info().rss / 1024 / 1024  # MB
-            logger.info(f"{func.__name__} - Memory: {initial_memory:.1f}MB -> {final_memory:.1f}MB")
-            
-            # Warning if memory usage is high
-            if final_memory > 1000:  # 1GB
-                logger.warning(f"High memory usage: {final_memory:.1f}MB")
+            try:
+                final_memory = process.memory_info().rss / 1024 / 1024  # MB
+                logger.info(f"{func.__name__} - Memory: {initial_memory:.1f}MB -> {final_memory:.1f}MB")
+                
+                # Warning if memory usage is high
+                if final_memory > 800:  # 800MB warning for Render
+                    logger.warning(f"High memory usage: {final_memory:.1f}MB")
+            except:
+                pass
     
     return wrapper
 
 class OptimizedVoiceProcessor:
     def __init__(self):
         self.min_audio_length = 1.0
-        self.max_audio_length = 10.0  # Limit audio length
-        self.verification_threshold = 0.75
+        self.max_audio_length = 8.0  # Reduced for Render limits
+        self.verification_threshold = float(os.getenv('DEFAULT_VERIFICATION_THRESHOLD', 0.75))
         self.sample_rate = 16000
-        self.max_embeddings_cache = 100  # Limit cache size
+        self.max_embeddings_cache = 50  # Reduced cache size
         
     @memory_monitor
     def extract_embedding(self, audio_path):
         """Extract voice embedding with memory optimization"""
         try:
-            # Get encoder instance
             encoder = get_encoder()
             
             # Load and validate audio
-            audio_info = librosa.get_samplerate(audio_path)
             duration = librosa.get_duration(filename=audio_path)
             
             # Validate duration
@@ -91,7 +101,7 @@ class OptimizedVoiceProcessor:
             if duration > self.max_audio_length:
                 raise ValueError(f"Audio too long. Maximum {self.max_audio_length} seconds allowed.")
             
-            logger.info(f"Processing audio: {duration:.2f}s, {audio_info}Hz")
+            logger.info(f"Processing audio: {duration:.2f}s")
             
             # Preprocess with memory-efficient approach
             wav = preprocess_wav(audio_path)
@@ -113,7 +123,6 @@ class OptimizedVoiceProcessor:
             
         except Exception as e:
             logger.error(f"Error extracting embedding: {str(e)}")
-            # Force cleanup on error
             gc.collect()
             raise
     
@@ -129,7 +138,7 @@ class OptimizedVoiceProcessor:
                 raise ValueError("Embeddings must have same length")
             
             # Convert to numpy arrays
-            emb1 = np.array(embedding1, dtype=np.float32)  # Use float32 to save memory
+            emb1 = np.array(embedding1, dtype=np.float32)
             emb2 = np.array(embedding2, dtype=np.float32)
             
             # Calculate cosine similarity
@@ -163,16 +172,16 @@ class OptimizedVoiceProcessor:
             if not enrolled_embeddings:
                 raise ValueError("No enrolled embeddings provided")
             
-            # Limit number of comparisons to prevent memory issues
-            max_comparisons = 20
+            # Limit number of comparisons for Render
+            max_comparisons = 15
             if len(enrolled_embeddings) > max_comparisons:
                 logger.warning(f"Too many enrollments ({len(enrolled_embeddings)}), using first {max_comparisons}")
                 enrolled_embeddings = enrolled_embeddings[:max_comparisons]
             
             similarities = []
             
-            # Process in smaller batches to manage memory
-            batch_size = 5
+            # Process in smaller batches
+            batch_size = 3
             for i in range(0, len(enrolled_embeddings), batch_size):
                 batch = enrolled_embeddings[i:i+batch_size]
                 
@@ -210,21 +219,31 @@ class OptimizedVoiceProcessor:
 # Initialize processor
 voice_processor = OptimizedVoiceProcessor()
 
+@app.route('/', methods=['GET'])
+def home():
+    """Root endpoint"""
+    return jsonify({
+        'service': 'Voice Processing API',
+        'status': 'running',
+        'version': '1.0.0'
+    })
+
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Enhanced health check with memory info"""
+    """Health check for Render"""
     try:
         process = psutil.Process(os.getpid())
         memory_info = process.memory_info()
         
         return jsonify({
             'status': 'healthy',
-            'service': 'voice_processor_optimized',
+            'service': 'voice_processor_render',
             'memory_mb': round(memory_info.rss / 1024 / 1024, 1),
-            'cpu_percent': process.cpu_percent(),
-            'encoder_loaded': encoder_instance is not None
+            'encoder_loaded': encoder_instance is not None,
+            'environment': os.getenv('RENDER_SERVICE_NAME', 'local')
         })
     except Exception as e:
+        logger.error(f"Health check failed: {e}")
         return jsonify({
             'status': 'error',
             'error': str(e)
@@ -233,7 +252,7 @@ def health_check():
 @app.route('/extract_embedding', methods=['POST'])
 @memory_monitor
 def extract_embedding():
-    """Memory-optimized embedding extraction"""
+    """Memory-optimized embedding extraction for Render"""
     temp_file_path = None
     
     try:
@@ -245,9 +264,9 @@ def extract_embedding():
             return jsonify({'error': 'No file selected'}), 400
         
         # Check file size before processing
-        audio_file.seek(0, 2)  # Seek to end
+        audio_file.seek(0, 2)
         file_size = audio_file.tell()
-        audio_file.seek(0)  # Reset to beginning
+        audio_file.seek(0)
         
         max_size = 8 * 1024 * 1024  # 8MB
         if file_size > max_size:
@@ -345,7 +364,7 @@ def verify_voice():
 
 @app.route('/memory_status', methods=['GET'])
 def memory_status():
-    """Get detailed memory status"""
+    """Get memory status for monitoring"""
     try:
         process = psutil.Process(os.getpid())
         memory_info = process.memory_info()
@@ -353,61 +372,54 @@ def memory_status():
         return jsonify({
             'rss_mb': round(memory_info.rss / 1024 / 1024, 1),
             'vms_mb': round(memory_info.vms / 1024 / 1024, 1),
-            'cpu_percent': process.cpu_percent(),
-            'num_threads': process.num_threads(),
-            'encoder_loaded': encoder_instance is not None
+            'encoder_loaded': encoder_instance is not None,
+            'service': os.getenv('RENDER_SERVICE_NAME', 'local')
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/cleanup', methods=['POST'])
-@memory_monitor
-def force_cleanup():
-    """Force garbage collection"""
-    try:
-        # Force garbage collection
-        collected = gc.collect()
-        
-        process = psutil.Process(os.getpid())
-        memory_after = process.memory_info().rss / 1024 / 1024
-        
-        return jsonify({
-            'success': True,
-            'collected_objects': collected,
-            'memory_mb': round(memory_after, 1)
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-# Memory cleanup middleware
-@app.after_request
-def after_request(response):
-    # Light garbage collection after each request
-    if gc.get_count()[0] > 100:  # Only if there are many objects
-        gc.collect()
-    return response
-
+# Error handlers
 @app.errorhandler(413)
 def too_large(e):
     return jsonify({'error': 'File too large. Maximum size is 8MB.'}), 413
 
+@app.errorhandler(500)
+def internal_error(e):
+    logger.error(f"Internal server error: {e}")
+    return jsonify({'error': 'Internal server error'}), 500
+
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({'error': 'Endpoint not found'}), 404
+
+# Memory cleanup middleware
+@app.after_request
+def after_request(response):
+    # Light garbage collection after requests
+    if gc.get_count()[0] > 50:
+        gc.collect()
+    return response
+
+# Render deployment configuration
 if __name__ == '__main__':
-    # Set memory-friendly configuration
-    os.environ['OMP_NUM_THREADS'] = '2'  # Limit OpenMP threads
-    os.environ['MKL_NUM_THREADS'] = '2'  # Limit MKL threads
+    # Environment setup for Render
+    port = int(os.environ.get('PORT', 5001))
     
-    port = int(os.environ.get('VOICE_PROCESSOR_PORT', 5001))
+    # Log startup info
+    logger.info(f"Starting voice processor on port {port}")
+    logger.info(f"Environment: {os.getenv('RENDER_SERVICE_NAME', 'local')}")
     
-    # Log initial memory usage
-    process = psutil.Process(os.getpid())
-    initial_memory = process.memory_info().rss / 1024 / 1024
-    logger.info(f"Starting voice processor with {initial_memory:.1f}MB memory")
+    try:
+        process = psutil.Process(os.getpid())
+        initial_memory = process.memory_info().rss / 1024 / 1024
+        logger.info(f"Initial memory usage: {initial_memory:.1f}MB")
+    except:
+        pass
     
-    # Use single process with limited workers for memory efficiency
+    # Run with Render-optimized settings
     app.run(
         host='0.0.0.0', 
         port=port, 
         debug=False,
-        threaded=True,
-        processes=1
+        threaded=True
     )

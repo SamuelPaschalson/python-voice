@@ -1,19 +1,27 @@
-# Flask==3.0.3
-# flask-cors==4.0.1
-# numpy==1.26.4
-# librosa==0.10.2.post1
-# soundfile==0.12.1
-# audioread==3.0.1
-
+# Render-optimized requirements.txt
 Flask==2.3.3
+Werkzeug==2.3.7
+gunicorn==21.2.0
+
+# Voice processing core
 resemblyzer==0.1.2
 librosa==0.10.1
+soundfile==0.12.1
+audioread==3.0.1
+
+# Scientific computing - optimized versions
 numpy==1.24.3
 scipy==1.10.1
 scikit-learn==1.3.0
 numba==0.57.1
-soundfile==0.12.1
+
+# System monitoring
+psutil==5.9.5
+
+# Audio processing dependencies
 webrtcvad==2.0.10
-Werkzeug==2.3.7
-gunicorn==21.2.0
-psutil==5.9.5  # Add for memory monitoring
+
+# Additional dependencies that might be needed by librosa/resemblyzer
+llvmlite==0.40.1
+cffi>=1.0
+resampy>=0.2.2
