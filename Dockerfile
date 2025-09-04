@@ -12,13 +12,13 @@ RUN apk add --no-cache \
     && ln -sf python3 /usr/bin/python
 
 # Install Python dependencies for local model inference (optional)
-RUN pip3 install --no-cache-dir \
-    numpy==1.24.3 \
-    scipy==1.10.1 \
-    scikit-learn==1.3.0 \
-    librosa==0.10.1 \
-    resemblyzer==0.1.2 \
-    soundfile==0.12.1
+# RUN pip3 install --no-cache-dir \
+#     numpy==1.24.3 \
+#     scipy==1.10.1 \
+#     scikit-learn==1.3.0 \
+#     librosa==0.10.1 \
+#     resemblyzer==0.1.2 \
+#     soundfile==0.12.1
 
 # Create app directory
 WORKDIR /usr/src/app

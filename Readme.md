@@ -92,8 +92,11 @@ audio: <audio_file>
 Response:
 
 json
+
+```
 {
 "success": true,
 "embedding": [0.123, -0.456, ...],
 "
 }
+```
