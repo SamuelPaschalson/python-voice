@@ -1,7 +1,19 @@
+# Flask==2.3.3
+# resemblyzer==0.1.2
+# librosa==0.10.1
+# numpy==1.24.3
+# scipy==1.10.1
+# scikit-learn==1.3.0
+# numba==0.57.1
+# soundfile==0.12.1
+# webrtcvad==2.0.10
+# Werkzeug==2.3.7
+# gunicorn==21.2.0
+# psutil==5.9.5
 Flask==2.3.3
 resemblyzer==0.1.2
 librosa==0.10.1
-numpy==1.24.3
+numpy==1.24.3  # Try to keep this version if possible
 scipy==1.10.1
 scikit-learn==1.3.0
 numba==0.57.1
@@ -10,3 +22,4 @@ webrtcvad==2.0.10
 Werkzeug==2.3.7
 gunicorn==21.2.0
 psutil==5.9.5
+setuptools==68.0.0  # Add setuptools explicitly
