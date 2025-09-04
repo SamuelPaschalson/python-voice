@@ -266,11 +266,11 @@ except Exception as e:
       logger.info(`Extracting embedding from ${originalName}`);
 
       // Try Python service first, fallback to local if configured
-      if (process.env.USE_LOCAL_PYTHON === 'true') {
-        return await this.extractEmbeddingViaLocal(audioBuffer, originalName);
-      } else {
-        return await this.extractEmbeddingViaPython(audioBuffer, originalName);
-      }
+      //   if (process.env.USE_LOCAL_PYTHON === 'true') {
+      return await this.extractEmbeddingViaLocal(audioBuffer, originalName);
+      //   } else {
+      //     return await this.extractEmbeddingViaPython(audioBuffer, originalName);
+      //   }
     } catch (error) {
       logger.error(`Error extracting embedding: ${error.message}`);
       throw error;
@@ -495,7 +495,7 @@ app.post('/extract_embedding', upload.single('audio'), async (req, res) => {
       return res.status(400).json({ error: error.message });
     }
 
-    res.status(500).json({ error: 'Failed to process audio' });
+    res.status(500).json({ error: 'Failed to process audio', message: error });
   } finally {
     // Cleanup
     voiceProcessor.cleanup();
